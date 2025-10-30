@@ -36,6 +36,8 @@ public class AuthServerRepository {
             if (rs.next()) {
                 user.setId(rs.getLong("id"));
             }
+            user.setFailedAttempts(0);
+            user.setLockedUntil(null);
             return user;
         } catch (SQLException e) {
             throw new RuntimeException("Failed to create user: " + e.getMessage(), e);
@@ -92,6 +94,21 @@ public class AuthServerRepository {
         executeUpdate(sql);
     }
 
+    public void updateFailedAttempts(Long userId, int failedAttempts) {
+        String sql = "UPDATE users SET failed_attempts = " + failedAttempts + ", updated_at = '" + LocalDateTime.now() + "' WHERE id = " + userId;
+        executeUpdate(sql);
+    }
+
+    public void lockUser(Long userId, int failedAttempts, LocalDateTime lockedUntil) {
+        String sql = "UPDATE users SET failed_attempts = " + failedAttempts + ", locked_until = '" + lockedUntil + "', updated_at = '" + LocalDateTime.now() + "' WHERE id = " + userId;
+        executeUpdate(sql);
+    }
+
+    public void resetFailedAttempts(Long userId) {
+        String sql = "UPDATE users SET failed_attempts = 0, locked_until = NULL, updated_at = '" + LocalDateTime.now() + "' WHERE id = " + userId;
+        executeUpdate(sql);
+    }
+
     private void executeUpdate(String sql) {
         try (Connection connection = Database.getConnection();
              Statement statement = connection.createStatement()) {
@@ -123,6 +140,9 @@ public class AuthServerRepository {
         user.setUsername(rs.getString("username"));
         user.setFullName(rs.getString("full_name"));
         user.setLoggedin(rs.getInt("loggedin") == 1);
+        Object attempts = rs.getObject("failed_attempts");
+        user.setFailedAttempts(attempts == null ? null : ((Number) attempts).intValue());
+        user.setLockedUntil(rs.getString("locked_until"));
         user.setCreatedAt(rs.getString("created_at"));
         user.setUpdatedAt(rs.getString("updated_at"));
         return user;

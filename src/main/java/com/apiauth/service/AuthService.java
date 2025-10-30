@@ -6,12 +6,15 @@ import org.springframework.stereotype.Service;
 
 import java.net.HttpURLConnection;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeParseException;
 import java.util.Base64;
 import java.util.Map;
 import java.util.Optional;
 
 @Service
 public class AuthService {
+    private static final int HTTP_LOCKED = 423;
     private final AuthServerRepository repository = new AuthServerRepository();
 
     public ServiceResult signup(Map<String, String> body) {
@@ -36,6 +39,8 @@ public class AuthService {
                 body.get("username"),
                 body.get("full_name"),
                 true,
+                0,
+                null,
                 null,
                 null);
 
@@ -59,9 +64,43 @@ public class AuthService {
         }
 
         User user = userOptional.get();
+        LocalDateTime now = LocalDateTime.now();
+
+        String lockedUntilValue = user.getLockedUntil();
+        if (lockedUntilValue != null && !lockedUntilValue.isBlank()) {
+            try {
+                LocalDateTime lockedUntil = LocalDateTime.parse(lockedUntilValue);
+                if (lockedUntil.isAfter(now)) {
+                    return error(HTTP_LOCKED, "Conta bloqueada por tentativas invalidas. Tente novamente apos " + lockedUntil);
+                }
+                repository.resetFailedAttempts(user.getId());
+                user.setFailedAttempts(0);
+                user.setLockedUntil(null);
+            } catch (DateTimeParseException e) {
+                repository.resetFailedAttempts(user.getId());
+                user.setFailedAttempts(0);
+                user.setLockedUntil(null);
+            }
+        }
+
         if (!user.getPassword().equals(body.get("password"))) {
+            int attempts = user.getFailedAttempts() == null ? 0 : user.getFailedAttempts();
+            attempts++;
+            if (attempts >= 3) {
+                LocalDateTime lockedUntil = LocalDateTime.now().plusMinutes(10);
+                repository.lockUser(user.getId(), attempts, lockedUntil);
+                user.setFailedAttempts(attempts);
+                user.setLockedUntil(lockedUntil.toString());
+                return error(HTTP_LOCKED, "Conta bloqueada por 10 minutos devido a tentativas invalidas");
+            }
+            repository.updateFailedAttempts(user.getId(), attempts);
+            user.setFailedAttempts(attempts);
             return error(HttpURLConnection.HTTP_UNAUTHORIZED, "Senha invalida");
         }
+
+        repository.resetFailedAttempts(user.getId());
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
 
         repository.setLoggedIn(user.getId(), true);
         user.setLoggedin(true);
@@ -84,6 +123,9 @@ public class AuthService {
         User user = userOptional.get();
         repository.updatePassword(user.getId(), body.get("new_password"));
         user.setPassword(body.get("new_password"));
+        repository.resetFailedAttempts(user.getId());
+        user.setFailedAttempts(0);
+        user.setLockedUntil(null);
         repository.setLoggedIn(user.getId(), true);
         user.setLoggedin(true);
 

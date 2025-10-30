@@ -15,6 +15,8 @@ public class User {
     private String username;
     private String fullName;
     private Boolean loggedin;
+    private Integer failedAttempts;
+    private String lockedUntil;
     private String createdAt;
     private String updatedAt;
 }

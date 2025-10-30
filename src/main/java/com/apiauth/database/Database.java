@@ -28,6 +28,8 @@ public class Database {
                     "username TEXT, " +
                     "full_name TEXT, " +
                     "loggedin INTEGER DEFAULT 0, " +
+                    "failed_attempts INTEGER DEFAULT 0, " +
+                    "locked_until TEXT, " +
                     "created_at TEXT, " +
                     "updated_at TEXT" +
                     ")");
@@ -39,6 +41,9 @@ public class Database {
                     "created_at TEXT, " +
                     "FOREIGN KEY (user_id) REFERENCES users(id)" +
                     ")");
+
+            ensureColumn(statement, "users", "failed_attempts", "INTEGER DEFAULT 0");
+            ensureColumn(statement, "users", "locked_until", "TEXT");
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -46,5 +51,16 @@ public class Database {
 
     public static Connection getConnection() throws SQLException {
         return DriverManager.getConnection(URL);
+    }
+
+    private static void ensureColumn(Statement statement, String table, String column, String definition) {
+        try {
+            statement.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition);
+        } catch (SQLException e) {
+            String message = e.getMessage();
+            if (message == null || !message.toLowerCase().contains("duplicate column name")) {
+                e.printStackTrace();
+            }
+        }
     }
 }
